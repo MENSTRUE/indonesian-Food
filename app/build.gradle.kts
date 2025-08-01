@@ -4,12 +4,6 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-configurations.all {
-    resolutionStrategy {
-        exclude(group = "com.google.ai.edge.litert")
-    }
-}
-
 android {
     namespace = "com.android.indonesianfood"
     compileSdk = 35
@@ -33,23 +27,35 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
         jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
+        mlModelBinding = true
     }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "2.0.0"
+    }
+
+    // Buat jaga-jaga resolusi konflik
+    configurations.all {
+        resolutionStrategy {
+            exclude(group = "com.google.ai.edge.litert")
+        }
     }
 }
 
 dependencies {
-
+    // Android Jetpack & Compose
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -58,6 +64,35 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.androidx.runtime.livedata)
+
+    // Gambar
+    implementation(libs.coil.compose)
+
+    // TensorFlow Lite - WAJIB untuk runtime-nya
+//    implementation("org.tensorflow:tensorflow-lite:2.13.0")
+//    implementation("org.tensorflow:tensorflow-lite-support:0.4.3")
+//    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.3")
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
+    implementation(libs.tensorflow.tensorflow.lite.metadata)
+
+    // CameraX
+    val cameraxVersion = "1.2.3"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
+    implementation("androidx.camera:camera-extensions:$cameraxVersion")
+
+    // Kotlin Standard Library
+    implementation(kotlin("stdlib-jdk8"))
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -65,24 +100,4 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-
-    implementation(libs.androidx.navigation.compose)
-    implementation(libs.coil.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    implementation(libs.tensorflow.lite)
-    implementation(libs.tensorflow.lite.task.vision)
-    implementation(libs.tensorflow.lite.support)
-    implementation(libs.androidx.material.icons.extended)
-
-    implementation(libs.androidx.runtime.livedata)
-
-    val camerax_version = "1.2.3"
-    implementation("androidx.camera:camera-core:${camerax_version}")
-    implementation("androidx.camera:camera-camera2:${camerax_version}")
-    implementation("androidx.camera:camera-lifecycle:${camerax_version}")
-    implementation("androidx.camera:camera-view:${camerax_version}")
-    implementation("androidx.camera:camera-extensions:${camerax_version}")
-
-    implementation(kotlin("stdlib-jdk8"))
 }

@@ -18,8 +18,8 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -40,7 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import org.tensorflow.lite.DataType
+import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
@@ -65,57 +65,56 @@ import org.tensorflow.lite.support.model.Model
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun IngredientTrackingScreen(onBackClick: () -> Unit, paddingValues: PaddingValues, onBackPressExit: () -> Unit) { // Tambahkan callback exit
-    BackHandler(enabled = true) {
-        // Pop back jika ada riwayat, jika tidak ada, panggil onBackPressExit
-        if (onBackClick != null) { // Pastikan onBackClick bisa dipanggil
-            onBackClick()
-        } else {
-            onBackPressExit()
-        }
-    }
+fun IngredientTrackingScreen(
+    onBackClick: () -> Unit,
+    paddingValues: PaddingValues,
+    onBackPressExit: () -> Unit
+) {
+    BackHandler { onBackClick() }
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     var livePredictionResult by remember { mutableStateOf("Menunggu deteksi...") }
+    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
 
-    val cameraExecutor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) showPermissionDeniedDialog = true
+    }
 
     val imageProcessor = remember {
         ImageProcessor.Builder()
             .add(ResizeOp(224, 224, ResizeOp.ResizeMethod.BILINEAR))
-            .add(org.tensorflow.lite.support.common.ops.NormalizeOp(0.0f, 255.0f))
+            .add(NormalizeOp(127.5f, 127.5f))
             .build()
     }
 
     val tfliteModel = remember {
         try {
-            Model.createModel(context.applicationContext, "model_klasifikasi_bahan_masak.tflite")
-        } catch (e: IOException) {
-            Log.e("IngredientTracking", "Gagal memuat model: ${e.message}")
-            null
+            Model.createModel(context, "model_klasifikasi_bahan_masak.tflite")
         } catch (e: Exception) {
-            Log.e("IngredientTracking", "Error in Model creation: ${e.message}", e)
+            Log.e("IngredientTracking", "Model error: ${e.message}", e)
             null
         }
     }
+
     val labels = remember {
         try {
             context.assets.open("labels.txt").bufferedReader().useLines { it.toList() }
         } catch (e: IOException) {
-            Log.e("IngredientTracking", "Gagal memuat label: ${e.message}")
+            Log.e("IngredientTracking", "Label error: ${e.message}")
             emptyList()
         }
     }
 
-    val imageAnalyzer = remember(tfliteModel, labels, imageProcessor) {
+    val imageAnalyzer = remember(tfliteModel, labels) {
         ImageAnalysis.Analyzer { imageProxy ->
             val bitmap = imageProxy.toBitmap()
             if (bitmap != null && tfliteModel != null && labels.isNotEmpty()) {
@@ -127,18 +126,10 @@ fun IngredientTrackingScreen(onBackClick: () -> Unit, paddingValues: PaddingValu
         }
     }
 
-    var showPermissionDeniedDialog by remember { mutableStateOf(false) }
-
-    val requestPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (!isGranted) {
-            showPermissionDeniedDialog = true
-        }
-    }
-
     DisposableEffect(Unit) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
         onDispose {
@@ -150,42 +141,29 @@ fun IngredientTrackingScreen(onBackClick: () -> Unit, paddingValues: PaddingValu
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Tracking Bahan (Live)", style = MaterialTheme.typography.titleLarge) },
+                title = { Text("Tracking Bahan (Live)") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                }
             )
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
                 .padding(innerPadding)
                 .padding(paddingValues)
+                .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Deteksi Bahan Secara Langsung",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            Text(
-                text = "Arahkan kamera ke bahan masakan Anda untuk deteksi real-time.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+            Text("Arahkan kamera ke bahan makanan", fontWeight = FontWeight.Bold)
 
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
                 AndroidView(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -194,59 +172,40 @@ fun IngredientTrackingScreen(onBackClick: () -> Unit, paddingValues: PaddingValu
                     factory = { ctx ->
                         val previewView = PreviewView(ctx).apply {
                             layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                            scaleType = PreviewView.ScaleType.FILL_CENTER
                         }
-                        val cameraProviderFuture = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context)
+                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                         cameraProviderFuture.addListener({
                             val cameraProvider = cameraProviderFuture.get()
                             val preview = Preview.Builder().build().also {
                                 it.setSurfaceProvider(previewView.surfaceProvider)
                             }
-
-                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
                             val imageAnalysis = ImageAnalysis.Builder()
                                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                 .build()
-                                .also {
-                                    it.setAnalyzer(cameraExecutor, imageAnalyzer)
-                                }
+                                .apply { setAnalyzer(cameraExecutor, imageAnalyzer) }
 
                             try {
                                 cameraProvider.unbindAll()
                                 cameraProvider.bindToLifecycle(
                                     lifecycleOwner,
-                                    cameraSelector,
+                                    CameraSelector.DEFAULT_BACK_CAMERA,
                                     preview,
                                     imageAnalysis
                                 )
-                            } catch (exc: Exception) {
-                                Log.e("IngredientTracking", "Use case binding failed", exc)
+                            } catch (e: Exception) {
+                                Log.e("CameraX", "Binding failed", e)
                             }
-                        }, ContextCompat.getMainExecutor(context))
+                        }, ContextCompat.getMainExecutor(ctx))
                         previewView
                     }
                 )
             } else {
-                Text(
-                    text = "Izin kamera dibutuhkan untuk deteksi real-time.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(16.dp)
-                )
+                Text("Izin kamera dibutuhkan", color = MaterialTheme.colorScheme.error)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Hasil Deteksi Live:",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-            Text(
-                text = livePredictionResult,
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Text("Hasil Deteksi: ", fontWeight = FontWeight.Bold)
+            Text(livePredictionResult)
         }
     }
 
@@ -254,10 +213,10 @@ fun IngredientTrackingScreen(onBackClick: () -> Unit, paddingValues: PaddingValu
         AlertDialog(
             onDismissRequest = { showPermissionDeniedDialog = false },
             title = { Text("Izin Dibutuhkan") },
-            text = { Text("Aplikasi membutuhkan izin Kamera untuk fitur ini.") },
+            text = { Text("Aplikasi memerlukan izin kamera.") },
             confirmButton = {
                 Button(onClick = { showPermissionDeniedDialog = false }) {
-                    Text("Oke")
+                    Text("OK")
                 }
             }
         )
@@ -273,34 +232,29 @@ private fun predictImageLive(
 ) {
     try {
         val rotatedBitmap = rotateBitmap(bitmap, 90f)
-
-        val tensorImage = TensorImage(DataType.FLOAT32)
-        tensorImage.load(rotatedBitmap)
+        val tensorImage = TensorImage(DataType.FLOAT32).apply {
+            load(rotatedBitmap)
+        }
         val processedImage = imageProcessor.process(tensorImage)
-        val inputByteBuffer = processedImage.buffer
+        val inputBuffer = processedImage.buffer
 
-        val outputTensorShape = intArrayOf(1, labels.size)
-        val outputDataType = DataType.FLOAT32
+        val outputTensor = tfliteModel.getOutputTensor(0)
+        val outputBuffer = TensorBuffer.createFixedSize(outputTensor.shape(), outputTensor.dataType())
+        tfliteModel.run(arrayOf(inputBuffer), mapOf(0 to outputBuffer.buffer))
 
-        val outputBuffer = TensorBuffer.createFixedSize(outputTensorShape, outputDataType)
-        val outputsMap = mapOf(0 to outputBuffer.buffer)
+        val labeled = TensorLabel(labels, outputBuffer).getMapWithFloatValue()
+        val result = labeled.entries.sortedByDescending { it.value }.firstOrNull()
 
-        tfliteModel.run(arrayOf(inputByteBuffer), outputsMap)
+        Log.d("TFLite", "Full Result: $labeled")
 
-        val labeledProbabilities = TensorLabel(labels, outputBuffer).getMapWithFloatValue()
-        val sortedResults = labeledProbabilities.entries.sortedByDescending { it.value }
-
-        val topResult = sortedResults.firstOrNull()
-
-        val resultString = if (topResult != null && topResult.value > 0.5) {
-            "${topResult.key}: ${(topResult.value * 100).toInt()}%"
+        val resultText = if (result != null && result.value > 0.5f && result.key.isNotBlank()) {
+            "${result.key}: ${"%.2f".format(result.value * 100)}%"
         } else {
             "Tidak dapat mendeteksi bahan."
         }
-
-        onResult(resultString)
+        onResult(resultText)
     } catch (e: Exception) {
-        Log.e("IngredientTracking", "Error prediksi live: ${e.message}", e)
+        Log.e("TFLite", "Prediction error: ${e.message}", e)
         onResult("Error: ${e.message}")
     }
 }
@@ -313,18 +267,13 @@ private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
 fun ImageProxy.toBitmap(): Bitmap? {
     val yBuffer = planes[0].buffer
     val vuBuffer = planes[2].buffer
-
     val ySize = yBuffer.remaining()
     val vuSize = vuBuffer.remaining()
-
     val nv21 = ByteArray(ySize + vuSize)
-
     yBuffer.get(nv21, 0, ySize)
     vuBuffer.get(nv21, ySize, vuSize)
-
     val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
     val out = ByteArrayOutputStream()
     yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
-    val imageBytes = out.toByteArray()
-    return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    return BitmapFactory.decodeByteArray(out.toByteArray(), 0, out.size())
 }

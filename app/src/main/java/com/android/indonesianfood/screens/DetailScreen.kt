@@ -36,13 +36,22 @@ import com.android.indonesianfood.data.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: HomeViewModel = viewModel()) {
+fun DetailScreen(
+    foodItemId: String?,
+    onBackClick: () -> Unit,
+    homeViewModel: HomeViewModel = viewModel()
+) {
     val foodItem = foodItemId?.let { homeViewModel.getFoodItemById(it) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(foodItem?.name ?: "Detail Resep", style = MaterialTheme.typography.titleLarge) },
+                title = {
+                    Text(
+                        foodItem?.name ?: "Detail Resep",
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
@@ -116,15 +125,12 @@ fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: Ho
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                    ) {
+                    Row {
                         Text(
                             text = "${foodItem.category} • ${foodItem.origin}",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
                         )
-                        // Removed rating display
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -153,6 +159,7 @@ fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: Ho
                     )
                 }
             }
+
             items(foodItem.ingredients) { ingredient ->
                 Text(
                     text = "• $ingredient",
@@ -162,6 +169,7 @@ fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: Ho
                         .padding(start = 24.dp, end = 16.dp)
                 )
             }
+
             item {
                 if (foodItem.ingredients.isEmpty()) {
                     Text(
@@ -193,17 +201,26 @@ fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: Ho
                     )
                 }
             }
-            items(foodItem.instructions) { instruction ->
+
+            // 🔧 Perbaikan: split jika hanya 1 instruksi panjang
+            val steps = if (foodItem.instructions.size == 1) {
+                foodItem.instructions.first().split(";").map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                foodItem.instructions
+            }
+
+            items(steps) { instruction ->
                 Text(
-                    text = "${foodItem.instructions.indexOf(instruction) + 1}. $instruction",
+                    text = "${steps.indexOf(instruction) + 1}. $instruction",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 24.dp, end = 16.dp)
                 )
             }
+
             item {
-                if (foodItem.instructions.isEmpty()) {
+                if (steps.isEmpty()) {
                     Text(
                         text = "Instruksi tidak tersedia.",
                         style = MaterialTheme.typography.bodyMedium,
@@ -213,6 +230,7 @@ fun DetailScreen(foodItemId: String?, onBackClick: () -> Unit, homeViewModel: Ho
                     )
                 }
             }
+
             item {
                 Spacer(modifier = Modifier.height(32.dp))
             }

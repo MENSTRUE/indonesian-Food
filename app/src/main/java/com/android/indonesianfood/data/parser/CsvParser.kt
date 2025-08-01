@@ -12,12 +12,11 @@ object CsvParser {
         try {
             val inputStream = context.assets.open(fileName)
             val reader = BufferedReader(InputStreamReader(inputStream))
-            reader.readLine()
+            reader.readLine() // Skip header
 
             var line: String?
             while (reader.readLine().also { line = it } != null) {
-                val tokens = line!!.split(",")
-
+                val tokens = parseCsvLine(line!!)
                 if (tokens.size >= 9) {
                     val id = tokens[0].trim()
                     val name = tokens[1].trim()
@@ -53,5 +52,39 @@ object CsvParser {
             Log.e("CsvParser", "Error parsing CSV: ${e.message}")
         }
         return foodItems
+    }
+
+    private fun parseCsvLine(line: String): List<String> {
+        val result = mutableListOf<String>()
+        val current = StringBuilder()
+        var inQuotes = false
+
+        var i = 0
+        while (i < line.length) {
+            val char = line[i]
+            when (char) {
+                '"' -> {
+                    if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+                        // Double quote inside quoted field
+                        current.append('"')
+                        i++
+                    } else {
+                        inQuotes = !inQuotes
+                    }
+                }
+                ',' -> {
+                    if (inQuotes) {
+                        current.append(char)
+                    } else {
+                        result.add(current.toString())
+                        current.clear()
+                    }
+                }
+                else -> current.append(char)
+            }
+            i++
+        }
+        result.add(current.toString())
+        return result
     }
 }
